@@ -1,0 +1,71 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: db-backup
+  namespace: default
+spec:
+  schedule: "0 3 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: OnFailure
+          initContainers:
+            - name: dump
+              image: postgres:16-alpine
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: db-secret
+                      key: DATABASE_URL
+              command:
+                - sh
+                - -c
+                - |
+                  set -e
+                  STAMP=$(date -u +%Y%m%dT%H%M%SZ)
+                  pg_dump --dbname="$DATABASE_URL" -Fc -f /backup/voxcript-${STAMP}.dump
+                  echo "dumped voxcript-${STAMP}.dump"
+              volumeMounts:
+                - name: backup
+                  mountPath: /backup
+          containers:
+            - name: upload
+              image: amazon/aws-cli:2.15.0
+              env:
+                - name: AWS_ACCESS_KEY_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: r2-backup
+                      key: AWS_ACCESS_KEY_ID
+                - name: AWS_SECRET_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: r2-backup
+                      key: AWS_SECRET_ACCESS_KEY
+                - name: AWS_DEFAULT_REGION
+                  value: auto
+                - name: S3_ENDPOINT
+                  valueFrom:
+                    secretKeyRef:
+                      name: r2-backup
+                      key: S3_ENDPOINT
+              command:
+                - sh
+                - -c
+                - |
+                  set -e
+                  FILE=$(ls /backup/*.dump | head -1)
+                  aws s3 cp "$FILE" "s3://voxcript-backups/$(basename $FILE)" --endpoint-url "$S3_ENDPOINT"
+                  echo "uploaded $(basename $FILE)"
+              volumeMounts:
+                - name: backup
+                  mountPath: /backup
+          volumes:
+            - name: backup
+              emptyDir: {}
