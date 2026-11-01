@@ -1,0 +1,50 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum JobStatus {
+  queued
+  transcribing
+  burning
+  done
+  failed
+  cancelled
+  expired
+}
+
+model Job {
+  id               String    @id
+  correlationId    String
+  status           JobStatus @default(queued)
+  failureCode      String?
+  attempts         Int       @default(0)
+  language         String    @default("auto")
+  detectedLanguage String?
+  displayName      String
+  ownerKey         String
+  accessTokenHash  String
+  durationSeconds  Float
+  videoHeight      Int
+  srtBytes         Int?
+  mp4Bytes         Int?
+  hasPoster        Boolean   @default(false)
+  createdAt        DateTime  @default(now())
+  startedAt        DateTime?
+  finishedAt       DateTime?
+  expiresAt        DateTime?
+
+  @@index([status, createdAt])
+  @@index([ownerKey])
+  @@index([expiresAt])
+}
+
+model WorkerHeartbeat {
+  workerId String   @id
+  beatAt   DateTime
+  version  String
+}
