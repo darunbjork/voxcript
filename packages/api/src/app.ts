@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify'
 import { randomUUID } from 'node:crypto'
 import type { ApiEnv } from './env.js'
 import { errorHandler } from './errors/error-handler.js'
+import { statusRoutes } from './routes/status.js'
 
 export async function buildApp(env: ApiEnv): Promise<FastifyInstance> {
   const app = Fastify({
@@ -20,6 +21,8 @@ export async function buildApp(env: ApiEnv): Promise<FastifyInstance> {
   app.get('/ready', async () => {
     return { status: 'ready' }
   })
+
+  await app.register(statusRoutes)
 
   return app
 }
