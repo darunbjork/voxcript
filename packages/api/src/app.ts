@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto'
 import type { ApiEnv } from './env.js'
 import { errorHandler } from './errors/error-handler.js'
 import { statusRoutes } from './routes/status.js'
+import { createJobRoutes } from './routes/create-job.js'
 
 export async function buildApp(env: ApiEnv): Promise<FastifyInstance> {
   const app = Fastify({
@@ -23,6 +24,7 @@ export async function buildApp(env: ApiEnv): Promise<FastifyInstance> {
   })
 
   await app.register(statusRoutes)
+  await app.register(createJobRoutes)
 
   return app
 }
