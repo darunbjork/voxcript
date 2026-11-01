@@ -1,6 +1,5 @@
 import { createWriteStream } from 'node:fs'
-import { unlink } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { mkdir, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
 import { pipeline } from 'node:stream/promises'
 import type { FastifyInstance } from 'fastify'
@@ -34,10 +33,15 @@ export async function createJobRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const displayName = data.filename || 'upload.mp4'
-    const tempPath = join(tmpdir(), `voxcript-${generateJobId()}.upload`)
+    const jobId = generateJobId()
+    const mediaRoot = process.env.MEDIA_ROOT ?? '/tmp/voxcript'
+    const workDir = join(mediaRoot, jobId)
+    const inputPath = join(workDir, 'input')
+
+    await mkdir(workDir, { recursive: true })
 
     try {
-      await pipeline(data.file, createWriteStream(tempPath))
+      await pipeline(data.file, createWriteStream(inputPath))
 
       if (data.file.truncated) {
         throw new AppError(
@@ -49,7 +53,7 @@ export async function createJobRoutes(app: FastifyInstance): Promise<void> {
         )
       }
 
-      const probeResult = await probeMedia(tempPath, PROBE_TIMEOUT_MS)
+      const probeResult = await probeMedia(inputPath, PROBE_TIMEOUT_MS)
       if (!probeResult.ok) {
         throw new AppError(
           'INVALID_FORMAT',
@@ -92,7 +96,6 @@ export async function createJobRoutes(app: FastifyInstance): Promise<void> {
       }
 
       const accessToken = generateAccessToken()
-      const jobId = generateJobId()
       const correlationId = request.id
 
       await createJob({
@@ -121,8 +124,9 @@ export async function createJobRoutes(app: FastifyInstance): Promise<void> {
         error: null,
         correlationId,
       })
-    } finally {
-      await unlink(tempPath).catch(() => undefined)
+    } catch (error: unknown) {
+      await unlink(inputPath).catch(() => undefined)
+      throw error
     }
   })
 }
