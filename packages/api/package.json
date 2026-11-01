@@ -8,6 +8,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "dev": "tsx src/server.ts",
+    "worker": "tsx src/worker/main.ts",
     "start": "node dist/server.js"
   },
   "dependencies": {
