@@ -1,37 +1,66 @@
-import type { FailureStage, FailureView } from './failure-view.js'
-import { createFailureView } from './failure-view.js'
+import type { JobFailureCode, UploadLimits } from './failure-view.js'
 
-export type JobStatus = 'queued' | 'processing' | 'failed' | 'complete'
-
-export const JOB_STATUSES: readonly JobStatus[] = [
+export const JOB_STATUSES = [
   'queued',
-  'processing',
+  'transcribing',
+  'burning',
+  'done',
   'failed',
-  'complete',
-]
+  'cancelled',
+  'expired',
+] as const
+export type JobStatus = (typeof JOB_STATUSES)[number]
 
-export interface TranscriptionJob {
-  jobId: string
-  status: JobStatus
-  stage?: FailureStage | undefined
-  progress?: number | undefined
-  failureCode?: string | undefined
-  failureMessage?: string | undefined
-  createdAt: string
-  updatedAt: string
+export const SUBTITLE_LANGUAGES = ['auto', 'sv', 'en'] as const
+export type SubtitleLanguage = (typeof SUBTITLE_LANGUAGES)[number]
+
+export interface EstimateRange {
+  readonly minSeconds: number
+  readonly maxSeconds: number
 }
 
-export function isJobStatus(value: unknown): value is JobStatus {
-  return typeof value === 'string' && (JOB_STATUSES as readonly string[]).includes(value)
+export interface StatusResponse {
+  readonly accepting: boolean
+  readonly reason: 'QUEUE_FULL' | 'WORKER_DOWN' | null
+  readonly queueLength: number
+  readonly queueMax: number
+  readonly waitEstimateRange: EstimateRange | null
+  readonly limits: UploadLimits
 }
 
-export function toFailureView(job: TranscriptionJob): FailureView {
-  return createFailureView({
-    jobId: job.jobId,
-    status: job.status,
-    stage: job.stage,
-    progress: job.progress,
-    failureCode: job.failureCode,
-    failureMessage: job.failureMessage,
-  })
+export interface CreateJobResponse {
+  readonly id: string
+  readonly status: JobStatus
+  readonly queuePosition: number
+  readonly waitEstimateRange: EstimateRange | null
+  readonly processingEstimateRange: EstimateRange | null
+  readonly accessToken: string
+}
+
+export interface JobFailure {
+  readonly code: JobFailureCode
+  readonly correlationId: string
+}
+
+export interface JobFiles {
+  readonly mp4Bytes: number
+  readonly srtBytes: number
+}
+
+export interface JobView {
+  readonly id: string
+  readonly status: JobStatus
+  readonly progress: number | null
+  readonly queuePosition: number | null
+  readonly waitEstimateRange: EstimateRange | null
+  readonly processingEstimateRange: EstimateRange | null
+  readonly failure: JobFailure | null
+  readonly expiresAt: string | null
+  readonly posterUrl: string | null
+  readonly files: JobFiles | null
+  readonly displayName: string
+  readonly durationSeconds: number
+  readonly videoHeight: number
+  readonly language: SubtitleLanguage
+  readonly detectedLanguage: string | null
 }

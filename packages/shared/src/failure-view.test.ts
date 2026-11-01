@@ -1,50 +1,34 @@
 import { describe, expect, it } from 'vitest'
 import {
-  createFailureView,
-  describeFailureView,
-  FAILURE_STAGES,
-  isFailureViewComplete,
+  JOB_FAILURE_CODES,
+  JOB_FAILURE_VIEWS,
+  UPLOAD_REJECTION_CODES,
+  UPLOAD_REJECTION_MESSAGES,
+  isRetryable,
 } from './failure-view.js'
 
 describe('failure view contract', () => {
-  it('rejects a missing job identifier', () => {
-    expect(() => createFailureView({ jobId: '' })).toThrow('jobId is required')
-  })
-
-  it('rejects an invalid stage', () => {
-    expect(() =>
-      createFailureView({ jobId: 'job-123', stage: 'processing' as never }),
-    ).toThrow('invalid stage')
-  })
-
-  it('rejects progress outside zero through one hundred', () => {
-    expect(() => createFailureView({ jobId: 'job-123', progress: 101 })).toThrow(
-      'progress must be between 0 and 100',
-    )
-  })
-
-  it('creates a normalized view for every stage', () => {
-    for (const stage of FAILURE_STAGES) {
-      const view = createFailureView({
-        jobId: 'job-123',
-        stage,
-        status: stage === 'complete' ? 'complete' : 'processing',
-      })
-      expect(view.stage).toBe(stage)
-      expect(view.jobId).toBe('job-123')
-      expect(isFailureViewComplete(view)).toBe(stage === 'complete')
+  it('has a complete non-empty view for every job failure code', () => {
+    for (const code of JOB_FAILURE_CODES) {
+      const view = JOB_FAILURE_VIEWS[code]
+      expect(view.title.length).toBeGreaterThan(0)
+      expect(view.body.length).toBeGreaterThan(0)
+      expect(view.actionLabel.length).toBeGreaterThan(0)
     }
   })
 
-  it('describes a failed job with its stage and message', () => {
-    const view = createFailureView({
-      jobId: 'job-9',
-      status: 'failed',
-      stage: 'uploading',
-      failureMessage: 'file too large',
-    })
-    expect(describeFailureView(view)).toContain('failed')
-    expect(describeFailureView(view)).toContain('uploading')
-    expect(describeFailureView(view)).toContain('file too large')
+  it('builds upload rejection messages from the live limits', () => {
+    const limits = { maxMegabytes: 150, maxSeconds: 45 }
+    expect(UPLOAD_REJECTION_MESSAGES.TOO_LARGE(limits)).toContain('150')
+    expect(UPLOAD_REJECTION_MESSAGES.TOO_LONG(limits)).toContain('45')
+    for (const code of UPLOAD_REJECTION_CODES) {
+      expect(UPLOAD_REJECTION_MESSAGES[code](limits).length).toBeGreaterThan(0)
+    }
+  })
+
+  it('treats only queue-full and rate-limited as retryable', () => {
+    expect(isRetryable('QUEUE_FULL')).toBe(true)
+    expect(isRetryable('RATE_LIMITED')).toBe(true)
+    expect(isRetryable('WORKER_DOWN')).toBe(false)
   })
 })
