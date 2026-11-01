@@ -1,13 +1,9 @@
+import { readFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import type { FastifyInstance } from 'fastify'
 import { AppError } from '../errors/app-error.js'
 import { prisma } from '../db/prisma.js'
 import { hashToken } from '../jobs/token.js'
-
-function buildPlaceholderSrt(displayName: string, durationSeconds: number): string {
-  const end = Math.max(1, Math.floor(durationSeconds))
-  const endTs = `00:00:${String(end).padStart(2, '0')},000`
-  return ['1', `00:00:00,000 --> ${endTs}`, `[placeholder] ${displayName}`, ''].join('\n')
-}
 
 export async function srtRoutes(app: FastifyInstance): Promise<void> {
   app.get<{
@@ -40,11 +36,19 @@ export async function srtRoutes(app: FastifyInstance): Promise<void> {
       throw new AppError('VALIDATION_FAILED', 'Job is not ready for download')
     }
 
-    const body = buildPlaceholderSrt(job.displayName, job.durationSeconds)
+    const mediaRoot = process.env.MEDIA_ROOT ?? '/tmp/voxcript'
+    const srtPath = join(mediaRoot, id, 'result.srt')
+
+    let body: Buffer
+    try {
+      body = await readFile(srtPath)
+    } catch {
+      throw new AppError('JOB_NOT_FOUND', 'SRT file not found')
+    }
 
     return reply
       .header('content-type', 'application/x-subrip; charset=utf-8')
-      .header('content-disposition', `attachment; filename="${job.id}.srt"`)
+      .header('content-disposition', `attachment; filename="${id}.srt"`)
       .send(body)
   })
 }
