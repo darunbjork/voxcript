@@ -61,7 +61,7 @@ spec:
                 - |
                   set -e
                   FILE=$(ls /backup/*.dump | head -1)
-                  aws s3 cp "$FILE" "s3://voxcript-backups/$(basename $FILE)" --endpoint-url "$S3_ENDPOINT"
+                  aws s3 cp "$FILE" "s3://voxcript-db-backups-2026/$(basename $FILE)" --endpoint-url "$S3_ENDPOINT"
                   echo "uploaded $(basename $FILE)"
               volumeMounts:
                 - name: backup
