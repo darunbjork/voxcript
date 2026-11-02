@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  namespace: default
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: worker
+  template:
+    metadata:
+      labels:
+        app: worker
+    spec:
+      terminationGracePeriodSeconds: 300
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: worker
+          image: ghcr.io/darunbjork/voxcript-worker:latest
+          imagePullPolicy: Always
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: LOG_LEVEL
+              value: info
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: db-secret
+                  key: DATABASE_URL
+            - name: WHISPER_BIN
+              value: /usr/local/bin/whisper
+            - name: WHISPER_MODEL
+              value: /opt/whisper/ggml-tiny.bin
+            - name: MEDIA_ROOT
+              value: /tmp/voxcript
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: '3'
+              memory: 3Gi
+          volumeMounts:
+            - name: media
+              mountPath: /tmp/voxcript
+      volumes:
+        - name: media
+          hostPath:
+            path: /var/lib/voxcript/media
+            type: DirectoryOrCreate
