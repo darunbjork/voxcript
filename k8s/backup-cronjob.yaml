@@ -29,7 +29,7 @@ spec:
                 - |
                   set -e
                   STAMP=$(date -u +%Y%m%dT%H%M%SZ)
-                  pg_dump --dbname="$DATABASE_URL" -Fc -f /backup/voxcript-${STAMP}.dump
+                  pg_dump --dbname="${DATABASE_URL%%\?*}" -Fc -f /backup/voxcript-${STAMP}.dump
                   echo "dumped voxcript-${STAMP}.dump"
               volumeMounts:
                 - name: backup
