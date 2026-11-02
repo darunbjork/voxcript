@@ -1,0 +1,71 @@
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Build images and roll out
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          REF_SHA: ${{ github.event.workflow_run.head_sha }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: root
+          key: ${{ secrets.VPS_SSH_KEY }}
+          fingerprint: ${{ secrets.VPS_SSH_FINGERPRINT }}
+          envs: REF_SHA, GH_TOKEN
+          script_stop: true
+          script: |
+            set -e
+            REF_SHORT=$(echo "$REF_SHA" | cut -c1-7)
+            DEPLOY_DIR="/tmp/voxcript-deploy-${REF_SHA}"
+            trap 'rm -rf "$DEPLOY_DIR"' EXIT
+            rm -rf "$DEPLOY_DIR"
+            mkdir -p "$DEPLOY_DIR"
+            cd "$DEPLOY_DIR"
+            git init -q
+            git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/darunbjork/voxcript.git"
+            git fetch -q --depth 1 origin "$REF_SHA"
+            git checkout -q FETCH_HEAD
+            git remote remove origin
+            docker build -f packages/api/Dockerfile.api -t ghcr.io/darunbjork/voxcript-api:sha-${REF_SHORT} .
+            docker build -f packages/api/Dockerfile.worker -t ghcr.io/darunbjork/voxcript-worker:sha-${REF_SHORT} .
+            docker push ghcr.io/darunbjork/voxcript-api:sha-${REF_SHORT}
+            docker push ghcr.io/darunbjork/voxcript-worker:sha-${REF_SHORT}
+            docker tag ghcr.io/darunbjork/voxcript-api:sha-${REF_SHORT} ghcr.io/darunbjork/voxcript-api:latest
+            docker tag ghcr.io/darunbjork/voxcript-worker:sha-${REF_SHORT} ghcr.io/darunbjork/voxcript-worker:latest
+            docker push ghcr.io/darunbjork/voxcript-api:latest
+            docker push ghcr.io/darunbjork/voxcript-worker:latest
+            API_DIGEST=$(docker inspect --format '{{index .RepoDigests 0}}' ghcr.io/darunbjork/voxcript-api:sha-${REF_SHORT})
+            WORKER_DIGEST=$(docker inspect --format '{{index .RepoDigests 0}}' ghcr.io/darunbjork/voxcript-worker:sha-${REF_SHORT})
+            kubectl set image deployment/api api="${API_DIGEST}" -n default
+            kubectl set image deployment/worker worker="${WORKER_DIGEST}" -n default
+            kubectl rollout status deployment/api -n default --timeout=180s
+            kubectl rollout status deployment/worker -n default --timeout=180s
+      - name: Smoke test
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: root
+          key: ${{ secrets.VPS_SSH_KEY }}
+          fingerprint: ${{ secrets.VPS_SSH_FINGERPRINT }}
+          script: |
+            set -e
+            curl -sf --max-time 15 https://api.voxcript.app/health
+            curl -sf --max-time 15 https://api.voxcript.app/api/v1/status | grep -q '"success":true'
+            echo "SMOKE OK"
