@@ -19,7 +19,7 @@ export async function buildApp(env: ApiEnv): Promise<FastifyInstance> {
   app.setErrorHandler(errorHandler)
 
   await app.register(cors, {
-    origin: ['https://cdn.voxcript.app'],
+    origin: ['https://cdn.voxcript.app', 'http://localhost:8080'],
     methods: ['GET', 'POST', 'OPTIONS'],
     allowedHeaders: ['x-access-token', 'content-type'],
     credentials: false,
