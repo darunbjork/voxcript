@@ -12,6 +12,7 @@
     "start": "node dist/server.js"
   },
   "dependencies": {
+    "@fastify/cors": "^11.4.0",
     "@fastify/multipart": "^10.1.6",
     "@prisma/client": "6.19.3",
     "@transcribe/shared": "workspace:*",
