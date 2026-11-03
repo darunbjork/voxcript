@@ -1,0 +1,66 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: voxcript
+      POSTGRES_PASSWORD: voxcript
+      POSTGRES_DB: voxcript
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U voxcript']
+      interval: 3s
+      timeout: 2s
+      retries: 20
+
+  api:
+    build:
+      context: .
+      dockerfile: packages/api/Dockerfile.api
+    environment:
+      NODE_ENV: production
+      PORT: '3000'
+      LOG_LEVEL: info
+      DATABASE_URL: postgresql://voxcript:voxcript@postgres:5432/voxcript?schema=public
+      MEDIA_ROOT: /tmp/voxcript
+    command: sh -c "node packages/api/node_modules/prisma/build/index.js migrate deploy --schema packages/api/prisma/schema.prisma && node packages/api/dist/server.js"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - '3000:3000'
+    volumes:
+      - media:/tmp/voxcript
+    user: '0'
+
+  worker:
+    build:
+      context: .
+      dockerfile: packages/api/Dockerfile.worker
+    platform: linux/amd64
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: info
+      DATABASE_URL: postgresql://voxcript:voxcript@postgres:5432/voxcript?schema=public
+      MEDIA_ROOT: /tmp/voxcript
+      WHISPER_BIN: /usr/local/bin/whisper
+      WHISPER_MODEL: /opt/whisper/ggml-tiny.bin
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - media:/tmp/voxcript
+    user: '0'
+    restart: on-failure
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+      args:
+        VITE_API_URL: http://localhost:3000
+    ports:
+      - '8080:80'
+    depends_on:
+      - api
+
+volumes:
+  media:
