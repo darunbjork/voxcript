@@ -51,12 +51,19 @@ jobs:
             docker tag ghcr.io/darunbjork/voxcript-worker:sha-${REF_SHORT} ghcr.io/darunbjork/voxcript-worker:latest
             docker push ghcr.io/darunbjork/voxcript-api:latest
             docker push ghcr.io/darunbjork/voxcript-worker:latest
+            docker build -f Dockerfile.web -t ghcr.io/darunbjork/voxcript-web:sha-${REF_SHORT} .
+            docker push ghcr.io/darunbjork/voxcript-web:sha-${REF_SHORT}
+            docker tag ghcr.io/darunbjork/voxcript-web:sha-${REF_SHORT} ghcr.io/darunbjork/voxcript-web:latest
+            docker push ghcr.io/darunbjork/voxcript-web:latest
             API_DIGEST=$(docker inspect --format '{{index .RepoDigests 0}}' ghcr.io/darunbjork/voxcript-api:sha-${REF_SHORT})
             WORKER_DIGEST=$(docker inspect --format '{{index .RepoDigests 0}}' ghcr.io/darunbjork/voxcript-worker:sha-${REF_SHORT})
             kubectl set image deployment/api api="${API_DIGEST}" -n default
             kubectl set image deployment/worker worker="${WORKER_DIGEST}" -n default
             kubectl rollout status deployment/api -n default --timeout=180s
             kubectl rollout status deployment/worker -n default --timeout=180s
+            WEB_DIGEST=$(docker inspect --format '{{index .RepoDigests 0}}' ghcr.io/darunbjork/voxcript-web:sha-${REF_SHORT})
+            kubectl set image deployment/web web="${WEB_DIGEST}" -n default 2>/dev/null || true
+            kubectl rollout status deployment/web -n default --timeout=120s 2>/dev/null || true
       - name: Smoke test
         uses: appleboy/ssh-action@v1.2.0
         with:
