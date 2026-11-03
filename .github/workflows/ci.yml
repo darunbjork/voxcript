@@ -69,3 +69,45 @@ jobs:
         run: pnpm --filter @transcribe/api exec prisma migrate deploy
       - name: Test
         run: pnpm run test
+
+  e2e:
+    name: e2e
+    runs-on: ubuntu-latest
+    needs: quality
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @transcribe/web exec playwright install chromium --with-deps
+      - name: Build and start e2e stack
+        run: docker compose -f docker-compose.e2e.yml up -d --build
+      - name: Wait for API ready
+        run: |
+          for i in $(seq 1 90); do
+            if curl -sf http://localhost:3000/ready; then echo ready; break; fi
+            echo "waiting $i"; sleep 2
+          done
+      - name: Wait for web ready
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8080; then echo ready; break; fi
+            echo "waiting $i"; sleep 2
+          done
+      - name: Run Playwright
+        run: pnpm --filter @transcribe/web exec playwright test
+        env:
+          E2E_BASE_URL: http://localhost:8080
+      - name: Upload traces on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: packages/web/test-results
+          if-no-files-found: ignore
+      - name: Stop stack
+        if: always()
+        run: docker compose -f docker-compose.e2e.yml down -v
