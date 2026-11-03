@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { JobStatus } from '@transcribe/shared'
 
-const API = 'https://api.voxcript.app'
+const API = import.meta.env.VITE_API_URL ?? 'https://api.voxcript.app'
 const STORAGE_ID = 'voxcript_id'
 const STORAGE_TOKEN = 'voxcript_token'
 
