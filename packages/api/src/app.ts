@@ -1,6 +1,7 @@
 import Fastify from 'fastify'
 import type { FastifyInstance } from 'fastify'
 import { randomUUID } from 'node:crypto'
+import cors from '@fastify/cors'
 import type { ApiEnv } from './env.js'
 import { errorHandler } from './errors/error-handler.js'
 import { statusRoutes } from './routes/status.js'
@@ -16,6 +17,14 @@ export async function buildApp(env: ApiEnv): Promise<FastifyInstance> {
   })
 
   app.setErrorHandler(errorHandler)
+
+  await app.register(cors, {
+    origin: ['https://cdn.voxcript.app'],
+    methods: ['GET', 'POST', 'OPTIONS'],
+    allowedHeaders: ['x-access-token', 'content-type'],
+    credentials: false,
+    maxAge: 600,
+  })
 
   app.get('/health', async () => {
     return { status: 'ok' }
