@@ -115,6 +115,64 @@ Merges to `main` automatically deploy:
 3. A smoke test hits `https://api.voxcript.app/health` and `/api/v1/status`
    from the workflow before declaring success.
 
+## How a change ships (branch → image → production)
+
+The walk-through for the examiner's favorite question: _"You change one line
+of code — what happens until it runs in production?"_
+
+1. **Create a branch.** Everything starts from `main`, which is protected —
+   direct pushes are rejected:
+
+   ```bash
+   git checkout -b fix-ui-typo
+   ```
+
+2. **Make the change and run the local gate** — the same checks CI runs:
+
+   ```bash
+   pnpm run quality        # build + typecheck + lint + format:check
+   pnpm run test           # unit + integration tests (needs Postgres)
+   ```
+
+3. **Push and open a pull request.** GitHub Actions fires the `CI`
+   workflow with three jobs:
+
+   - `quality` — install (frozen lockfile), build, typecheck, lint, format
+   - `Lint → Type-check → Test → Build` — unit + integration tests against
+     a real `postgres:16` service container, after `prisma migrate deploy`
+   - `e2e` — starts once `quality` passes: `docker compose -f
+docker-compose.e2e.yml up --build` compiles the full stack with real
+     whisper.cpp, then Playwright uploads a real mp4, polls until `done`,
+     downloads the SRT and asserts it contains real transcribed text
+
+   All three are required checks — the merge button stays disabled until
+   every one is green.
+
+4. **Merge to main.** The merge commit triggers `CI` again on `main`: the
+   same three jobs must pass on the exact commit that is about to ship.
+
+5. **Build the new images.** When `CI` is green on `main`, the `Deploy`
+   workflow starts (it is triggered by workflow_run on CI success). It
+   SSHes into the VPS with a fingerprint-pinned host key, checks out the
+   exact `head_sha` CI validated, and runs `docker build` three times —
+   `voxcript-api`, `voxcript-worker`, `voxcript-web`. Each image is pushed
+   to GHCR as both `:sha-<commit>` and `:latest`; build layers are cached,
+   so only what changed rebuilds.
+
+6. **Roll out with zero downtime.** Still on the server, the workflow runs
+   `kubectl set image` pointing each Deployment at the immutable
+   `@sha256:...` digest — never a mutable tag. The API Deployment runs
+   with `maxUnavailable: 0, maxSurge: 1`: a new pod must pass its `/ready`
+   probe before any old pod is removed, and `preStop sleep 10` drains
+   in-flight requests first. Measured on production: 900 requests during a
+   live rollout, 900 × HTTP 200, 0 failures.
+
+7. **Verify — or fail loudly.** `kubectl rollout status` waits for the new
+   pods, then the workflow smoke-tests `GET /health` and
+   `GET /api/v1/status` against the live domain. If anything fails, the
+   workflow turns red in Actions — and the previous ReplicaSet is still
+   one `kubectl rollout undo` away.
+
 ## Security and operations
 
 - TLS everywhere via Let's Encrypt DNS-01, auto-renewed by cert-manager
