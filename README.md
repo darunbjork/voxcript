@@ -25,6 +25,49 @@ Everything — AI inference, video decoding, encoding, queue, storage — runs
 on a single Hetzner CPX32 (4 vCPU / 8 GB) inside k3s. No cloud AI services,
 no external transcription APIs.
 
+## The chain — upload to download
+
+The full request flow, one file's journey through the system:
+
+```
+[ Browser ]
+    │ 1. Clicks "Upload"
+    ▼
+[ Traefik Ingress ] (terminates HTTPS)
+    │ 2. Routes to API
+    ▼
+[ API Pod (Fastify) ]
+    │ 3. Saves video to shared volume (/tmp/voxcript/<id>/input)
+    │ 4. Inserts row in database (status: "queued")
+    │ 5. Returns 201 + access token to browser
+    ▼
+[ Database (PostgreSQL) ] ◄────────┐
+    │ 6. Worker polls every 2s      │
+    ▼                              │
+[ Worker Pod (whisper.cpp) ]       │ 9. Updates status to "done"
+    │ 7. Reads video from volume   │
+    │ 8. Runs FFmpeg + Whisper     │
+    │    Saves SRT to volume       │
+    └──────────────────────────────┘
+
+[ Browser ] (polling every 2 seconds)
+    │ 10. Sees status: "done"
+    │ 11. Clicks "Download SRT"
+    ▼
+[ API Pod ] ── reads SRT from volume ──► returns file to browser
+```
+
+Notes that matter when explaining the chain:
+
+- The shared volume is mounted at `/tmp/voxcript` inside both the API and
+  worker pods; on the host it is `/var/lib/voxcript/media`. One `hostPath`,
+  two containers — that's how the API can hand work to the worker without
+  passing bytes through HTTP, and why the API can answer `201` immediately
+  while the worker processes asynchronously.
+- The worker never gets pushed anything — it polls Postgres every 2 seconds
+  and claims work with `SELECT … FOR UPDATE SKIP LOCKED`, so multiple
+  workers can never claim the same job twice.
+
 ## Architecture
 
 ```
